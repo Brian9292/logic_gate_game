@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>邏輯閘解謎遊戲</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #eef2f7;
+      padding: 20px;
+      text-align: center;
+    }
+    h1 {
+      color: #2c3e50;
+    }
+    .gate-img {
+      width: 80px;
+      vertical-align: middle;
+      margin: 10px;
+    }
+    .puzzle {
+      margin-top: 30px;
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      display: inline-block;
+    }
+    .inputs {
+      margin-bottom: 10px;
+    }
+    .gate-select, .input-select {
+      margin: 10px;
+      padding: 8px;
+      border-radius: 5px;
+    }
+    .output-box {
+      font-size: 1.5em;
+      margin-top: 20px;
+    }
+    .check-button, .next-button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .gate-animation {
+      display: inline-block;
+      transition: transform 0.3s ease-in-out;
+    }
+    .gate-animation.flash {
+      transform: scale(1.2);
+    }
+    .level-indicator {
+      margin-top: 20px;
+      font-weight: bold;
+    }
+    .status-bar {
+      margin-top: 15px;
+      font-size: 1em;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔧 邏輯閘解謎遊戲</h1>
+  <p>選擇邏輯閘與輸入，讓 Output 符合目標結果</p>
+
+  <div class="puzzle">
+    <div class="level-indicator">第 <span id="level-number">1</span> 關：目標輸出 = <span id="goal-output">1</span></div>
+
+    <div class="status-bar">
+      分數：<span id="score">0</span> ｜ 剩餘時間：<span id="timer">15</span> 秒 ｜ 錯誤次數：<span id="mistakes">0</span>
+    </div>
+
+    <div class="inputs">
+      A：
+      <select id="inputA" class="input-select"></select>
+      B：
+      <select id="inputB" class="input-select"></select>
+    </div>
+
+    <div>
+      選擇邏輯閘：
+      <select id="gate" class="gate-select"></select>
+      <span class="gate-animation" id="gateImage">
+        <img src="" class="gate-img" id="gateIcon" />
+      </span>
+    </div>
+
+    <div class="output-box">
+      Output：<span id="output">?</span>
+    </div>
+    <button class="check-button" onclick="checkOutput()">✅ 確認</button>
+    <button class="next-button" id="nextLevel" onclick="nextLevel()" style="display:none">➡️ 下一關</button>
+  </div>
+
+  <audio id="success-sound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_3fd8965b30.mp3" preload="auto"></audio>
+  <audio id="fail-sound" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_bded7fc50f.mp3" preload="auto"></audio>
+
+  <script>
+    const gateIconMap = {
+      "AND": "https://upload.wikimedia.org/wikipedia/commons/0/03/AND_ANSI_Labelled.svg",
+      "OR": "https://upload.wikimedia.org/wikipedia/commons/d/d0/OR_ANSI_Labelled.svg",
+      "XOR": "https://upload.wikimedia.org/wikipedia/commons/0/0c/XOR_ANSI_Labelled.svg",
+      "NAND": "https://upload.wikimedia.org/wikipedia/commons/f/f3/NAND_ANSI_Labelled.svg",
+      "NOR": "https://upload.wikimedia.org/wikipedia/commons/6/6a/NOR_ANSI_Labelled.svg",
+      "NOTA": "https://upload.wikimedia.org/wikipedia/commons/2/2a/NOT_ANSI_Labelled.svg",
+      "NOTB": "https://upload.wikimedia.org/wikipedia/commons/2/2a/NOT_ANSI_Labelled.svg"
+    };
+
+    const levels = [
+      { A: 1, B: 1, gate: "AND", expected: 1 },
+      { A: 1, B: 0, gate: "OR", expected: 1 },
+      { A: 0, B: 0, gate: "NOR", expected: 1 },
+      { A: 1, B: 1, gate: "XOR", expected: 0 },
+      { A: 1, B: 1, gate: "NAND", expected: 0 },
+      { A: 0, B: 1, gate: "NOTA", expected: 1 }
+    ];
+
+    let currentLevel = 0;
+    let score = 0;
+    let mistakes = 0;
+    let timerInterval;
+    let timeLeft = 15;
+
+    const gateSelect = document.getElementById("gate");
+    const gateImage = document.getElementById("gateIcon");
+    const gateImageContainer = document.getElementById("gateImage");
+    const successSound = document.getElementById("success-sound");
+    const failSound = document.getElementById("fail-sound");
+
+    function loadLevel() {
+      const level = levels[currentLevel];
+      document.getElementById("level-number").textContent = currentLevel + 1;
+      document.getElementById("goal-output").textContent = level.expected;
+      document.getElementById("score").textContent = score;
+      document.getElementById("mistakes").textContent = mistakes;
+      document.getElementById("timer").textContent = timeLeft;
+
+      document.getElementById("inputA").innerHTML = `<option value="${level.A}">${level.A}</option>`;
+      document.getElementById("inputB").innerHTML = `<option value="${level.B}">${level.B}</option>`;
+
+      gateSelect.innerHTML = Object.keys(gateIconMap)
+        .map(g => `<option value="${g}">${g}</option>`) 
+        .join('');
+      gateSelect.value = "AND";
+      gateImage.src = gateIconMap["AND"];
+      document.getElementById("output").textContent = "?";
+      document.getElementById("nextLevel").style.display = "none";
+
+      clearInterval(timerInterval);
+      timeLeft = 15;
+      timerInterval = setInterval(updateTimer, 1000);
+    }
+
+    function updateTimer() {
+      timeLeft--;
+      document.getElementById("timer").textContent = timeLeft;
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        alert("⏰ 時間到！進入下一關（視為失敗）");
+        mistakes++;
+        document.getElementById("mistakes").textContent = mistakes;
+        failSound.play();
+        nextLevel();
+      }
+    }
+
+    gateSelect.addEventListener("change", () => {
+      const gate = gateSelect.value;
+      gateImage.src = gateIconMap[gate] || "";
+      gateImageContainer.classList.add("flash");
+      setTimeout(() => gateImageContainer.classList.remove("flash"), 300);
+    });
+
+    function checkOutput() {
+      const A = parseInt(document.getElementById("inputA").value);
+      const B = parseInt(document.getElementById("inputB").value);
+      const gate = gateSelect.value;
+      let result = 0;
+
+      switch (gate) {
+        case "AND": result = A & B; break;
+        case "OR": result = A | B; break;
+        case "XOR": result = A ^ B; break;
+        case "NAND": result = 1 - (A & B); break;
+        case "NOR": result = 1 - (A | B); break;
+        case "NOTA": result = 1 - A; break;
+        case "NOTB": result = 1 - B; break;
+      }
+
+      document.getElementById("output").textContent = result;
+      gateImageContainer.classList.add("flash");
+      setTimeout(() => gateImageContainer.classList.remove("flash"), 300);
+
+      if (result === levels[currentLevel].expected) {
+        score += 10;
+        document.getElementById("score").textContent = score;
+        clearInterval(timerInterval);
+        successSound.play();
+        document.getElementById("nextLevel").style.display = "inline-block";
+      } else {
+        score = Math.max(0, score - 5);
+        mistakes++;
+        document.getElementById("score").textContent = score;
+        document.getElementById("mistakes").textContent = mistakes;
+        failSound.play();
+      }
+    }
+
+    function nextLevel() {
+      currentLevel++;
+      if (currentLevel < levels.length) {
+        loadLevel();
+      } else {
+        alert(`🎉 遊戲結束！總分：${score}，錯誤次數：${mistakes}`);
+        currentLevel = 0;
+        score = 0;
+        mistakes = 0;
+        loadLevel();
+      }
+    }
+
+    loadLevel();
+  </script>
+</body>
+</html>
